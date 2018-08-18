@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>second</title>
+</head>
+<body>
+    <div id="app" >
+        <input v-model="name" v-on:click="sayHi" type="text">
+        <h1>{{name}} 's age is {{age}},
+            <span>his bounty is &nbsp;{{money}}</span>
+        </h1>
+    </div>
+<script>
+    let subjectId=0
+    let observerId=0
+    let currentObserver=null
+    
+    class Observer{
+        constructor(vm,key,callback){
+        this.observerId=observerId++
+        this.subjects={}   
+        this.vm=vm
+        this.key=key
+        this.callback=callback   
+        this.value=this.getValue()
+       
+        }
+        getValue(){
+            currentObserver = this
+            let value = this.vm[this.key]
+            currentObserver = null
+            return value
+        }
+        update(){
+
+            let oldVal=this.value
+            let newVal=this.getValue()
+            if(oldVal!==newVal){
+                this.value=newVal
+               this.callback.bind(this)(oldVal,newVal)
+            }
+        }
+        subscribeTo(subject){
+            if(!this.subjects[subject.subjectId]){
+                subject.addObserver(this)
+                this.subjects[subject.subjectId]=subject
+                
+                
+            }
+        }
+    }
+    class Compile{
+        constructor(vm){
+            this.vm=vm
+            this.node=vm.$el
+            this.compile()
+        }
+        compile(){
+            this.traverse(this.node)
+        }
+        traverse(node){
+            if(node.nodeType===1){
+                this.compileNode(node)
+                node.childNodes.forEach(childNode=>{
+                    this.traverse(childNode)
+                })
+            }else if(node.nodeType===3){
+                this.compileText(node)
+            }
+        }
+        compileText(node){
+            let reg=/{{(.+?)}}/g
+            let match
+            while(match=reg.exec(node.nodeValue)){
+                let raw=match[0]
+                let key=match[1].trim()     
+                node.nodeValue=node.nodeValue.replace(raw,this.vm[key])
+                new Observer(this.vm,key,function(oldValue,value){
+                    node.nodeValue=node.nodeValue.replace(oldValue,value)
+                })
+            }
+        }
+        compileNode(node){
+            let attrs= [...node.attributes]
+            attrs.forEach(attr=>{
+                if(this.isBindModel(attr.name)){
+                    this.bindModel(node,attr)
+                }else if(this.isBindEventHander(attr.name)){
+                    this.bindEventHander(node,attr)
+                }
+            })
+        }
+        bindModel(node,attr){
+            let key=attr.value           
+            node.value=this.vm[key]        
+            new Observer(this.vm,key,function({},newVal){
+                node.value=newVal///
+            })
+            node.oninput=(e)=>{ 
+                let val=e.target.value                  
+                this.vm[key]=val///????
+            }
+        }
+        bindEventHander(node,attr){
+            let eventType=attr.name.substr(5)
+            let methodName=attr.value       
+            node.addEventListener(eventType,this.vm.$methods[methodName])
+        }
+        isBindModel(attrName){
+            return attrName==='v-model'
+        }
+        isBindEventHander(attrName){
+            return attrName.indexOf('v-on')===0
+        }
+    }
+
+    function observer(data){
+        if(!data||typeof data !== 'object'){return}
+        for(let key in data ){
+            let value=data[key]
+            let subject=new Subject()
+            Object.defineProperty(data,key,{
+                enumerable:true,
+                configurable:true,
+                get:function(){
+                    if(currentObserver){
+                        currentObserver.subscribeTo(subject)
+                    }              
+                    return value
+                },
+                set:function(newVal){
+                    value=newVal          
+                    subject.notify()
+                }
+            })
+            if (typeof val === 'object') {
+                observe(val)
+            }
+        }
+    }
+
+    class Subject{
+        constructor(){
+            this.subjectId=subjectId++
+            this.observers=[]
+        }
+        addObserver(observer){
+            this.observers.push(observer)
+        }
+        removeObserver(observer){
+            let index=this.observers.indexOf(observer)
+            if(index>-1){
+              this.observers.splice(index,1)  
+            }
+            
+        }
+        notify(){
+            this.observers.forEach(observer=>{
+                observer.update()
+            })
+           
+        }
+       
+    }
+    class mvvm{
+        constructor(opts){
+        this.init(opts)   
+         
+        observer(this.$data) 
+        new Compile(this)   
+        }
+        init(opts){
+            this.$el=document.querySelector(opts.el)
+         
+            this.$data=opts.data||{}
+            this.$methods=opts.methods||{}
+            for(let key in this.$data){
+                Object.defineProperty(this,key,{
+                    configurable:true,
+                    enumerable:true,
+                    get:()=>{
+                        return this.$data[key]
+                    },
+                    set:(newVal)=>{
+                        this.$data[key]=newVal
+                    }
+                })
+            }
+            for(let key in this.$methods){
+                this.$methods[key]=this.$methods[key].bind(this)
+            }
+        }
+       
+    }
+    let vm=new mvvm({
+        el:'#app',
+        data:{
+            name:'luffy',
+            age:19,
+            money:15000000
+        },
+        methods:{
+            sayHi(){alert(`hello,${this.name}`)}
+        }
+    })
+  
+    let clock=setInterval(function(){vm.age++
+    }, 1000)
+//1循序渐进2搞清楚顺序,先声明容器再依次加东西3传递参数搞清楚到底想要的是什么才行4想清楚
+//内在的逻辑顺序,事件发生的先后顺序,函数声明及执行的顺序非常重要.
+//此处发的错误有:最后声明subjects,颠倒了渲染和劫持数据的顺序,不清楚该传入哪个参数.
+//传参顺序,newval和oldval
+//正则检索的逻辑不严谨导致输入的内容和计数相同时会混乱
+
+
+</script>
+</body>
+</html>
